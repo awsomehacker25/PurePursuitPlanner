@@ -1175,6 +1175,7 @@ export default function App() {
   return (
     <div className="app-shell">
       <header>
+        <img src="/favicon-192.png" alt="" className="brand-logo" />
         <select
           className="game-select"
           title="Switch game / field"
