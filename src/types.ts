@@ -1,5 +1,7 @@
 export type Alliance = 'blue' | 'red';
 
+export type GameId = 'frc2026' | 'ftc2027';
+
 export type Mode = 'add' | 'drag' | 'rotate' | 'delete';
 
 export type TabKey = 'waypoints' | 'output' | 'settings' | 'obstacles' | 'import' | 'paths';
@@ -19,7 +21,7 @@ export interface Obstacle {
   h: number;
   color: string;
   blocked: boolean;
-  category: 'hub' | 'bump' | 'trench' | 'depot' | 'fuel' | 'other';
+  category: 'hub' | 'bump' | 'trench' | 'depot' | 'fuel' | 'hive' | 'flower' | 'other';
 }
 
 export interface PlannerSettings {

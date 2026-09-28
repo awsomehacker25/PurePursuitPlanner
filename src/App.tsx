@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { DEFAULT_OBSTACLES, DEFAULT_SETTINGS, FIELD } from './plannerConfig';
+import { GAMES, GAME_ORDER } from './games';
 import { buildPurePursuitPreviewPath, buildSimPath, getFirstPathCollision, normAngle, sampleAtTime } from './plannerMath';
-import type { Alliance, Mode, Obstacle, PlannerSettings, TabKey, Waypoint } from './types';
+import type { Alliance, GameId, Mode, Obstacle, PlannerSettings, TabKey, Waypoint } from './types';
 
 type PathDisplayMode = 'catmull' | 'purePursuit';
 
@@ -29,23 +29,34 @@ function hDir(h: number): string {
 }
 
 export default function App() {
+  const [gameId, setGameId] = useState<GameId>(() => {
+    const stored = localStorage.getItem('pp_gameid_v1');
+    return stored === 'ftc2027' ? 'ftc2027' : 'frc2026';
+  });
+  const activeGame = GAMES[gameId];
+  const FIELD = activeGame.field;
+
   const [waypoints, setWaypoints] = useState<Waypoint[]>([]);
   const [selectedWp, setSelectedWp] = useState(-1);
   const [mode, setMode] = useState<Mode>('add');
   const [tab, setTab] = useState<TabKey>('waypoints');
   const [alliance, setAlliance] = useState<Alliance>('blue');
-  const [settings, setSettings] = useState<PlannerSettings>(DEFAULT_SETTINGS);
-  const [obstacles, setObstacles] = useState<Obstacle[]>(DEFAULT_OBSTACLES);
+  const [settings, setSettings] = useState<PlannerSettings>(activeGame.defaultSettings);
+  const [obstacles, setObstacles] = useState<Obstacle[]>(activeGame.defaultObstacles);
   const [simT, setSimT] = useState(0);
   const [simPlaying, setSimPlaying] = useState(false);
   const [simSpeed, setSimSpeed] = useState(1);
   const [pathDisplayMode, setPathDisplayMode] = useState<PathDisplayMode>('catmull');
   const [purePursuitLookahead, setPurePursuitLookahead] = useState(10);
   const [mouseCoord, setMouseCoord] = useState({ x: 0, y: 0 });
-  const [savedPaths, setSavedPaths] = useState<{ name: string; waypoints: Waypoint[]; created: number }[]>([]);
+  const [savedPaths, setSavedPaths] = useState<{ name: string; waypoints: Waypoint[]; created: number; gameId?: GameId }[]>([]);
   const [saveName, setSaveName] = useState('');
   const [tooltip, setTooltip] = useState<{ show: boolean; text: string; x: number; y: number }>({ show: false, text: '', x: 0, y: 0 });
   const [theme, setTheme] = useState<'dark'|'light'>(() => (localStorage.getItem('pp_theme_v1') === 'light' ? 'light' : 'dark'));
+
+  const dispX = useCallback((v: number): number => (activeGame.negateX ? -v : v), [activeGame]);
+  const gameSwitchingRef = useRef(false);
+  const [canvasTick, setCanvasTick] = useState(0);
 
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -143,8 +154,8 @@ export default function App() {
     return s;
   };
 
-  const userToImg = useCallback((ux: number, uy: number): { imgX: number; imgY: number } => ({ imgX: FIELD.width - uy, imgY: ux }), []);
-  const imgToUser = useCallback((ix: number, iy: number): { x: number; y: number } => ({ x: iy, y: FIELD.width - ix }), []);
+  const userToImg = useCallback((ux: number, uy: number): { imgX: number; imgY: number } => activeGame.userToImg(ux, uy, FIELD), [activeGame, FIELD]);
+  const imgToUser = useCallback((ix: number, iy: number): { x: number; y: number } => activeGame.imgToUser(ix, iy, FIELD), [activeGame, FIELD]);
 
   const userToCanvas = useCallback((ux: number, uy: number): { cx: number; cy: number } => {
     const { imgX, imgY } = userToImg(ux, uy);
@@ -152,11 +163,12 @@ export default function App() {
   }, [userToImg]);
 
   const getGlobalZeroAngle = useCallback((): number => {
+    if (activeGame.zeroAngleMode === 'direct') return 0;
     const hub = obstacles.find((o) => o.id === 'hub_red') ?? obstacles[0];
     const s = scaleRef.current;
     const { w, h } = canvasSizeRef.current;
     return Math.atan2(hub.cy * s - h / 2, hub.cx * s - w / 2);
-  }, [obstacles]);
+  }, [activeGame, obstacles]);
 
   const collisionInfo = useMemo(
     () => getFirstPathCollision(activePath, obstacles, settings.robotW, settings.robotL, getGlobalZeroAngle(), userToImg),
@@ -187,6 +199,42 @@ export default function App() {
     } catch (e) {}
   }, []);
 
+  useEffect(() => {
+    try { localStorage.setItem('pp_gameid_v1', gameId); } catch (e) {}
+  }, [gameId]);
+
+  // Load this game's own working state (or its defaults) whenever the active game changes.
+  useEffect(() => {
+    gameSwitchingRef.current = true;
+    const game = GAMES[gameId];
+    let loaded: { waypoints: Waypoint[]; obstacles: Obstacle[]; settings: PlannerSettings; alliance: Alliance; obstaclesVersion?: number } | null = null;
+    try {
+      const raw = localStorage.getItem(`pp_gamestate_${gameId}_v1`);
+      if (raw) loaded = JSON.parse(raw);
+    } catch (e) {}
+    // If the shipped default obstacle layout has changed since this was saved (obstaclesVersion
+    // bumped in games.ts), prefer the fresh defaults instead of resurrecting a stale/outdated one.
+    const obstaclesStale = loaded?.obstaclesVersion !== game.obstaclesVersion;
+    setWaypoints(loaded?.waypoints ?? []);
+    setObstacles(!obstaclesStale && loaded?.obstacles ? loaded.obstacles : game.defaultObstacles);
+    setSettings(loaded?.settings ?? game.defaultSettings);
+    setAlliance(loaded?.alliance ?? 'blue');
+    setSelectedWp(-1);
+    setSimT(0);
+    setSimPlaying(false);
+    historyRef.current = [];
+    setTimeout(() => { gameSwitchingRef.current = false; }, 0);
+  }, [gameId]);
+
+  // Persist the working state for the active game so switching modes doesn't lose work.
+  useEffect(() => {
+    if (gameSwitchingRef.current) return;
+    try {
+      const obstaclesVersion = GAMES[gameId].obstaclesVersion;
+      localStorage.setItem(`pp_gamestate_${gameId}_v1`, JSON.stringify({ waypoints, obstacles, settings, alliance, obstaclesVersion }));
+    } catch (e) {}
+  }, [gameId, waypoints, obstacles, settings, alliance]);
+
   const persistSavedPaths = (next: typeof savedPaths) => {
     setSavedPaths(next);
     try { localStorage.setItem('pp_saved_paths_v1', JSON.stringify(next)); } catch (e) {}
@@ -199,7 +247,7 @@ export default function App() {
       return;
     }
     const name = saveName.trim() || `Path ${new Date().toLocaleString()}`;
-    const entry = { name, waypoints: waypoints.slice(), created: Date.now() };
+    const entry = { name, waypoints: waypoints.slice(), created: Date.now(), gameId };
     persistSavedPaths([entry, ...savedPaths]);
     setSaveName('');
   };
@@ -242,6 +290,7 @@ export default function App() {
   };
 
   const parseAndImportWaypoints = (text: string): Waypoint[] => {
+    const negX = activeGame.negateX;
     const parsed: Waypoint[] = [];
     const lines = text.trim().split('\n').map(l => l.trim()).filter(l => l);
     
@@ -256,24 +305,25 @@ export default function App() {
           if (Array.isArray(obj)) {
             for (const item of obj) {
               if (item.x !== undefined && item.y !== undefined) {
-                parsed.push({ x: -item.x, y: item.y, heading: item.heading ?? 0 });
+                parsed.push({ x: negX ? -item.x : item.x, y: item.y, heading: item.heading ?? 0 });
               }
             }
           } else if (obj.x !== undefined && obj.y !== undefined) {
-            parsed.push({ x: -obj.x, y: obj.y, heading: obj.heading ?? 0 });
+            parsed.push({ x: negX ? -obj.x : obj.x, y: obj.y, heading: obj.heading ?? 0 });
           }
           continue;
         } catch (e) {}
       }
-      
+
       // Try TrcPose2D format: new TrcPose2D(x, y, heading)
       const trcMatch = line.match(/TrcPose2D\s*\(\s*([\d.-]+)\s*,\s*([\d.-]+)\s*,\s*([\d.-]+)\s*\)/);
       if (trcMatch) {
         const [, xStr, yStr, hStr] = trcMatch;
-        parsed.push({ x: -Number(xStr), y: Number(yStr), heading: Number(hStr) });
+        const xv = Number(xStr);
+        parsed.push({ x: negX ? -xv : xv, y: Number(yStr), heading: Number(hStr) });
         continue;
       }
-      
+
       // Try CSV/space/comma separated: x,y,heading or x y heading
       const parts = line.replace(/[,\s]+/g, ' ').split(' ').filter(p => p);
       if (parts.length >= 2) {
@@ -281,7 +331,7 @@ export default function App() {
         const y = Number(parts[1]);
         const h = parts.length >= 3 ? Number(parts[2]) : 0;
         if (!Number.isNaN(x) && !Number.isNaN(y)) {
-          parsed.push({ x: -x, y, heading: h });
+          parsed.push({ x: negX ? -x : x, y, heading: h });
           continue;
         }
       }
@@ -290,37 +340,7 @@ export default function App() {
     return parsed;
   };
 
-  const generateJava = (): string => {
-    if (!waypoints.length) return '// No waypoints yet';
-    const s = waypoints[0];
-    const e = waypoints[waypoints.length - 1];
-    const lines: string[] = [
-      '// FRC 2026 REBUILT - Auto Path',
-      `// Alliance: ${alliance.toUpperCase()} | WPs: ${waypoints.length} | theta CW+, 0°=toward RED HUB`,
-      `// Limits: v=${fmt(settings.maxVel)} in/s, a=${fmt(settings.maxAccel)} in/s^2, decel=${fmt(settings.maxDecel)} in/s^2, turn=${fmt(settings.maxTurnRate)} deg/s`,
-      '',
-      `TrcPose2D startPose = new TrcPose2D(${fmt(-s.x)}, ${fmt(s.y)}, ${fmt(s.heading)});`,
-      `TrcPose2D endPose   = new TrcPose2D(${fmt(-e.x)}, ${fmt(e.y)}, ${fmt(e.heading)});`,
-    ];
-    if (waypoints.length > 2) {
-      lines.push('');
-      lines.push('// Intermediate waypoints');
-      waypoints.slice(1, -1).forEach((wp, i) => {
-        lines.push(`TrcPose2D wp${i + 1} = new TrcPose2D(${fmt(-wp.x)}, ${fmt(wp.y)}, ${fmt(wp.heading)});`);
-      });
-    }
-    lines.push('');
-    lines.push('// Pure Pursuit path array');
-    if (waypoints.length === 2) {
-      lines.push('TrcPose2D[] path = new TrcPose2D[] { startPose, endPose };');
-    } else {
-      const mids = waypoints.slice(1, -1).map((_, i) => `wp${i + 1}`).join(', ');
-      lines.push('TrcPose2D[] path = new TrcPose2D[] {');
-      lines.push(`    startPose, ${mids}, endPose`);
-      lines.push('};');
-    }
-    return lines.join('\n');
-  };
+  const generateJava = (): string => activeGame.generateCode(waypoints, alliance, settings);
 
   useEffect(() => {
     const resizeCanvas = (): void => {
@@ -338,12 +358,15 @@ export default function App() {
       canvas.style.width = `${w}px`;
       canvas.style.height = `${h}px`;
       canvasSizeRef.current = { w, h };
+      // Resizing a canvas element clears its pixels; bump a tick so the draw effect (which only
+      // depends on React state/props, not these refs) re-runs and actually repaints it.
+      setCanvasTick((t) => t + 1);
     };
 
     resizeCanvas();
     window.addEventListener('resize', resizeCanvas);
     return () => window.removeEventListener('resize', resizeCanvas);
-  }, []);
+  }, [FIELD]);
 
   useEffect(() => {
     if (!tooltipRef.current) return;
@@ -403,7 +426,7 @@ export default function App() {
     };
 
     const drawGrid = (): void => {
-      const g = 24 * scale;
+      const g = activeGame.gridSpacing * scale;
       ctx.strokeStyle = border2;
       ctx.lineWidth = 0.5;
       for (let x = 0; x < canvasW; x += g) {
@@ -688,6 +711,70 @@ export default function App() {
             ctx.fill();
           }
         }
+      } else if (obs.category === 'hive') {
+        // Two CELLS (front/back), each a funnel/hopper: wide scoop opening facing outward,
+        // tapering to a point facing the shared pivot bar in the middle - per the HIVE structure.
+        const cellW = ow * 0.95;
+        const cellH = oh * 0.48;
+        const sep = oh * 0.26;
+        // Local hexagon in unit space: v=-1 is the wide scoop opening, v=+1 is the tapered point.
+        const localPts: Array<[number, number]> = [
+          [0, -1],
+          [0.95, -0.5],
+          [0.55, 0.75],
+          [0, 1],
+          [-0.55, 0.75],
+          [-0.95, -0.5],
+        ];
+        const drawCell = (centerDy: number, flip: boolean): void => {
+          ctx.beginPath();
+          localPts.forEach(([u, v], i) => {
+            const px = cx + (u * cellW) / 2;
+            const py = cy + centerDy + (flip ? -v : v) * (cellH / 2);
+            if (i === 0) ctx.moveTo(px, py);
+            else ctx.lineTo(px, py);
+          });
+          ctx.closePath();
+        };
+
+        ctx.save();
+        ctx.globalAlpha = 0.18;
+        ctx.fillStyle = obs.color;
+        drawCell(-sep, false);
+        ctx.fill();
+        drawCell(sep, true);
+        ctx.fill();
+        ctx.restore();
+
+        ctx.strokeStyle = obs.color;
+        ctx.lineWidth = 1.4;
+        ctx.globalAlpha = 0.85;
+        drawCell(-sep, false);
+        ctx.stroke();
+        drawCell(sep, true);
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+
+        ctx.strokeStyle = obs.color;
+        ctx.lineWidth = Math.max(1.5, scale * 1.2);
+        ctx.globalAlpha = 0.55;
+        ctx.beginPath();
+        ctx.moveTo(cx - ow / 2, cy);
+        ctx.lineTo(cx + ow / 2, cy);
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+      } else if (obs.category === 'flower') {
+        const r = Math.max(1, Math.min(ow, oh) / 2);
+        ctx.save();
+        ctx.globalAlpha = 0.85;
+        ctx.fillStyle = obs.color;
+        ctx.beginPath();
+        ctx.arc(cx, cy, r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = cssToRgba(textColor, 0.5);
+        ctx.stroke();
+        ctx.restore();
       } else {
         ctx.save();
         ctx.globalAlpha = obs.blocked ? 0.28 : 0.18;
@@ -854,7 +941,7 @@ export default function App() {
       ctx.textAlign = 'left';
       ctx.fillText('COLLISION', 8, 14);
     }
-  }, [activePath, alliance, collision, collisionInfo.heading, collisionInfo.t, collisionInfo.x, collisionInfo.y, getGlobalZeroAngle, obstacles, pathDisplayMode, selectedWp, settings, simT, userToCanvas, waypoints, theme]);
+  }, [activeGame, activePath, alliance, canvasTick, collision, collisionInfo.heading, collisionInfo.t, collisionInfo.x, collisionInfo.y, getGlobalZeroAngle, obstacles, pathDisplayMode, selectedWp, settings, simT, userToCanvas, waypoints, theme]);
 
   // Redraw small dial canvases when theme or waypoints change
   useEffect(() => {
@@ -984,7 +1071,7 @@ export default function App() {
         x: event.clientX + 14,
         y: event.clientY - 10,
         // Sidebar displays X as -wp.x and Y as wp.y; make tooltip consistent with that
-        text: `WP${idx}: (${fmt(-wp.x)}\", ${fmt(wp.y)}\") theta=${Math.round(wp.heading)}°`,
+        text: `WP${idx}: (${fmt(dispX(wp.x))}\", ${fmt(wp.y)}\") theta=${Math.round(wp.heading)}°`,
       });
     } else {
       setTooltip((t) => ({ ...t, show: false }));
@@ -1067,7 +1154,17 @@ export default function App() {
   return (
     <div className="app-shell">
       <header>
-        <div className="logo">FRC <span>2026 //</span> REBUILT Path Planner</div>
+        <select
+          className="game-select"
+          title="Switch game / field"
+          value={gameId}
+          onChange={(e) => setGameId(e.target.value as GameId)}
+        >
+          {GAME_ORDER.map((id) => (
+            <option key={id} value={id}>{GAMES[id].shortLabel}</option>
+          ))}
+        </select>
+        <div className="logo">{activeGame.headerLabel}</div>
         <div className="alliance-toggle">
           <button
             className={alliance === 'blue' ? 'active blue' : ''}
@@ -1206,9 +1303,8 @@ export default function App() {
           {tab === 'waypoints' && (
             <div className="sidebar-content">
               <div className="info-box">
-                <strong>Origin:</strong> Blue outpost corner (top-right) - (0,0)<br />
-                <strong>+X</strong> right and <strong>+Y</strong> forward<br />
-                <strong>θ</strong> heading with max turn-rate limiting in simulation
+                <strong>Origin:</strong> {activeGame.originInfoTitle}<br />
+                {activeGame.originInfoLines.map((line, i) => (<span key={i}>{line}<br /></span>))}
               </div>
               {collision && <div className="collision-warn visible">⚠ Path crosses a blocked obstacle.</div>}
               <div className="section-hdr">Waypoints</div>
@@ -1257,7 +1353,7 @@ export default function App() {
                     }}
                   >
                     <div className="wp-label">{i === 0 ? 'Start' : i === waypoints.length - 1 ? 'End' : `Waypoint ${i}`}</div>
-                    <div className="wp-coords">X=<span>{fmt(-wp.x)}"</span> Y=<span>{fmt(wp.y)}"</span></div>
+                    <div className="wp-coords">X=<span>{fmt(dispX(wp.x))}"</span> Y=<span>{fmt(wp.y)}"</span></div>
                     <div className="heading-row">
                       <canvas
                         ref={(el) => {
@@ -1456,19 +1552,24 @@ export default function App() {
               </div>
 
               <div style={{ marginTop: '12px' }}>
-                {!savedPaths.length && <div className="empty-note">No saved paths yet. Save your current path to get started.</div>}
-                {savedPaths.map((p, i) => (
-                  <div key={i} className="wp-item" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <div style={{ flex: 1 }}>
-                      <div className="wp-label">{p.name}</div>
-                      <div style={{ fontSize: '11px', color: 'var(--muted)' }}>{new Date(p.created).toLocaleString()} • {p.waypoints.length} wpts</div>
+                {(() => {
+                  const visible = savedPaths
+                    .map((p, i) => ({ p, i }))
+                    .filter(({ p }) => (p.gameId ?? 'frc2026') === gameId);
+                  if (!visible.length) return <div className="empty-note">No saved paths yet. Save your current path to get started.</div>;
+                  return visible.map(({ p, i }) => (
+                    <div key={i} className="wp-item" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <div style={{ flex: 1 }}>
+                        <div className="wp-label">{p.name}</div>
+                        <div style={{ fontSize: '11px', color: 'var(--muted)' }}>{new Date(p.created).toLocaleString()} • {p.waypoints.length} wpts</div>
+                      </div>
+                      <div style={{ display: 'flex', gap: '6px' }}>
+                        <button className="btn" onClick={() => handleLoadPath(i)}>Load</button>
+                        <button className="btn" onClick={() => handleDeletePath(i)}>Del</button>
+                      </div>
                     </div>
-                    <div style={{ display: 'flex', gap: '6px' }}>
-                      <button className="btn" onClick={() => handleLoadPath(i)}>Load</button>
-                      <button className="btn" onClick={() => handleDeletePath(i)}>Del</button>
-                    </div>
-                  </div>
-                ))}
+                  ));
+                })()}
               </div>
             </div>
           )}
