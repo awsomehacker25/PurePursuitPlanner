@@ -18,6 +18,9 @@ export interface GameConfig {
   // Background reference-grid line spacing, in inches. Should match the real tile size so the
   // grid stays visually aligned with tile-based obstacles/waypoints instead of drifting off them.
   gridSpacing: number;
+  // Waypoint marker radius, in field inches (scaled to pixels like everything else, with a small
+  // pixel floor for visibility). Smaller fields need a smaller marker so it doesn't dwarf the tiles.
+  waypointMarkerIn: number;
   defaultSettings: PlannerSettings;
   defaultObstacles: Obstacle[];
   // Bump this whenever defaultObstacles' geometry changes, so a stale locally-persisted obstacle
@@ -43,6 +46,7 @@ const FRC_GAME: GameConfig = {
   headerLabel: 'FRC 2026 // REBUILT Path Planner',
   field: FIELD,
   gridSpacing: 24,
+  waypointMarkerIn: 4.2,
   defaultSettings: DEFAULT_SETTINGS,
   defaultObstacles: DEFAULT_OBSTACLES,
   obstaclesVersion: 1,
@@ -141,6 +145,7 @@ const FTC_GAME: GameConfig = {
   headerLabel: 'FTC 2027 // BIOBUZZ Path Planner',
   field: FTC_FIELD,
   gridSpacing: FTC_FULL / 6, // real FTC tile size (~23.54in), so the grid lines up with tiles
+  waypointMarkerIn: 2.6, // smaller field, so a smaller marker keeps it from dwarfing the tiles
   defaultSettings: FTC_DEFAULT_SETTINGS,
   defaultObstacles: FTC_DEFAULT_OBSTACLES,
   obstaclesVersion: 7,

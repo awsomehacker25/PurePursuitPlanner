@@ -49,7 +49,7 @@ export default function App() {
   const [pathDisplayMode, setPathDisplayMode] = useState<PathDisplayMode>('catmull');
   const [purePursuitLookahead, setPurePursuitLookahead] = useState(10);
   const [mouseCoord, setMouseCoord] = useState({ x: 0, y: 0 });
-  const [savedPaths, setSavedPaths] = useState<{ name: string; waypoints: Waypoint[]; created: number; gameId?: GameId }[]>([]);
+  const [savedPaths, setSavedPaths] = useState<{ name: string; waypoints: Waypoint[]; created: number; updated?: number; gameId?: GameId }[]>([]);
   const [saveName, setSaveName] = useState('');
   const [tooltip, setTooltip] = useState<{ show: boolean; text: string; x: number; y: number }>({ show: false, text: '', x: 0, y: 0 });
   const [theme, setTheme] = useState<'dark'|'light'>(() => (localStorage.getItem('pp_theme_v1') === 'light' ? 'light' : 'dark'));
@@ -266,6 +266,27 @@ export default function App() {
     if (!window.confirm(`Delete saved path "${entry.name}"?`)) return;
     const next = savedPaths.slice();
     next.splice(i, 1);
+    persistSavedPaths(next);
+  };
+
+  const handleRenamePath = (i: number, name: string) => {
+    const trimmed = name.trim();
+    if (!trimmed || trimmed === savedPaths[i]?.name) return;
+    const next = savedPaths.slice();
+    next[i] = { ...next[i], name: trimmed };
+    persistSavedPaths(next);
+  };
+
+  const handleUpdatePath = (i: number) => {
+    const entry = savedPaths[i];
+    if (!entry) return;
+    if (!waypoints.length) {
+      setTooltip({ show: true, text: 'No waypoints to save', x: 10, y: 10 });
+      setTimeout(() => setTooltip((t) => ({ ...t, show: false })), 1500);
+      return;
+    }
+    const next = savedPaths.slice();
+    next[i] = { ...entry, waypoints: waypoints.slice(), updated: Date.now() };
     persistSavedPaths(next);
   };
 
@@ -905,7 +926,7 @@ export default function App() {
       const isSelected = i === selectedWp;
       const amberColor = (css.getPropertyValue('--amber') || '#f7b731').trim();
       const colorVar = isFirst ? greenColor : isLast ? redColor : amberColor;
-      const r = Math.max(7, scale * 4.2);
+      const r = Math.max(6, scale * activeGame.waypointMarkerIn);
       const ang = getGlobalZeroAngle() + wp.heading * Math.PI / 180;
 
       ctx.strokeStyle = isSelected ? cssToRgba(textColor, 0.65) : cssToRgba(textColor, 0.28);
@@ -1544,7 +1565,7 @@ export default function App() {
           {tab === 'paths' && (
             <div className="sidebar-content">
               <div className="section-hdr">Saved Paths</div>
-              <div className="info-box">Save your current waypoint sequence, load it later, or delete saved paths.</div>
+              <div className="info-box">Save your current waypoint sequence, rename it, load it, update it with your current edits, or delete it.</div>
 
               <div style={{ display: 'flex', gap: '6px', marginTop: '8px' }}>
                 <input placeholder="Name (optional)" value={saveName} onChange={(e) => setSaveName(e.target.value)} style={{ flex: 1, padding: '6px', borderRadius: '4px', border: '1px solid var(--border)', background: 'var(--surface2)', color: 'var(--text)' }} />
@@ -1559,12 +1580,26 @@ export default function App() {
                   if (!visible.length) return <div className="empty-note">No saved paths yet. Save your current path to get started.</div>;
                   return visible.map(({ p, i }) => (
                     <div key={i} className="wp-item" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <div style={{ flex: 1 }}>
-                        <div className="wp-label">{p.name}</div>
-                        <div style={{ fontSize: '11px', color: 'var(--muted)' }}>{new Date(p.created).toLocaleString()} • {p.waypoints.length} wpts</div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <input
+                          key={`path-name-${i}-${p.name}`}
+                          className="heading-inp"
+                          defaultValue={p.name}
+                          title="Rename this saved path"
+                          style={{ width: '100%', textAlign: 'left', marginBottom: '3px' }}
+                          onClick={(e) => e.stopPropagation()}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                          }}
+                          onBlur={(e) => handleRenamePath(i, e.target.value)}
+                        />
+                        <div style={{ fontSize: '11px', color: 'var(--muted)' }}>
+                          {p.updated ? `Updated ${new Date(p.updated).toLocaleString()}` : new Date(p.created).toLocaleString()} • {p.waypoints.length} wpts
+                        </div>
                       </div>
-                      <div style={{ display: 'flex', gap: '6px' }}>
+                      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
                         <button className="btn" onClick={() => handleLoadPath(i)}>Load</button>
+                        <button className="btn" title="Overwrite this saved path with the current waypoints" onClick={() => handleUpdatePath(i)}>Update</button>
                         <button className="btn" onClick={() => handleDeletePath(i)}>Del</button>
                       </div>
                     </div>
