@@ -207,7 +207,7 @@ export default function App() {
   useEffect(() => {
     gameSwitchingRef.current = true;
     const game = GAMES[gameId];
-    let loaded: { waypoints: Waypoint[]; obstacles: Obstacle[]; settings: PlannerSettings; alliance: Alliance; obstaclesVersion?: number } | null = null;
+    let loaded: { waypoints: Waypoint[]; obstacles: Obstacle[]; settings: PlannerSettings; alliance: Alliance; obstaclesVersion?: number; settingsVersion?: number } | null = null;
     try {
       const raw = localStorage.getItem(`pp_gamestate_${gameId}_v1`);
       if (raw) loaded = JSON.parse(raw);
@@ -217,7 +217,8 @@ export default function App() {
     const obstaclesStale = loaded?.obstaclesVersion !== game.obstaclesVersion;
     setWaypoints(loaded?.waypoints ?? []);
     setObstacles(!obstaclesStale && loaded?.obstacles ? loaded.obstacles : game.defaultObstacles);
-    setSettings(loaded?.settings ?? game.defaultSettings);
+    const settingsStale = loaded?.settingsVersion !== game.settingsVersion;
+    setSettings(loaded?.settings ? (settingsStale ? { ...loaded.settings, ...game.settingsUpgrade } : loaded.settings) : game.defaultSettings);
     setAlliance(loaded?.alliance ?? 'blue');
     setSelectedWp(-1);
     setSimT(0);
@@ -230,8 +231,8 @@ export default function App() {
   useEffect(() => {
     if (gameSwitchingRef.current) return;
     try {
-      const obstaclesVersion = GAMES[gameId].obstaclesVersion;
-      localStorage.setItem(`pp_gamestate_${gameId}_v1`, JSON.stringify({ waypoints, obstacles, settings, alliance, obstaclesVersion }));
+      const { obstaclesVersion, settingsVersion } = GAMES[gameId];
+      localStorage.setItem(`pp_gamestate_${gameId}_v1`, JSON.stringify({ waypoints, obstacles, settings, alliance, obstaclesVersion, settingsVersion }));
     } catch (e) {}
   }, [gameId, waypoints, obstacles, settings, alliance]);
 
@@ -1260,7 +1261,7 @@ export default function App() {
           ))}
           <button className="btn" onClick={() => { setWaypointsHist([]); setSelectedWp(-1); setSimT(0); }}>Clear</button>
           <button className="btn primary" onClick={() => navigator.clipboard.writeText(generateJava())}>Copy Array</button>
-          <button className="btn" onClick={() => {
+          <button className="btn" disabled={!activeGame.supportsFlipSide} title={activeGame.supportsFlipSide ? undefined : 'Flip Side is not available for this field'} onClick={() => {
             setWaypointsHist((prev) => prev.map((wp) => {
               const img = userToImg(wp.x, wp.y);
               const ix = img.imgX; // keep horizontal image coord

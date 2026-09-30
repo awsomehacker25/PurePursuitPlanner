@@ -9,7 +9,7 @@ export const DEFAULT_SETTINGS: PlannerSettings = {
   robotW: 28,
   robotL: 28,
   showGrid: true,
-  showGhost: true,
+  showGhost: false,
   snap: 0,
   maxVel: 150,
   maxAccel: 120,

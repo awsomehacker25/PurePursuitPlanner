@@ -22,6 +22,13 @@ export interface GameConfig {
   // pixel floor for visibility). Smaller fields need a smaller marker so it doesn't dwarf the tiles.
   waypointMarkerIn: number;
   defaultSettings: PlannerSettings;
+  // Bump settingsVersion when a default changes that users' already-saved settings should pick up;
+  // settingsUpgrade is then merged over their saved settings once (their other tweaks are kept).
+  settingsVersion: number;
+  settingsUpgrade: Partial<PlannerSettings>;
+  // Whether the header "Flip Side" button applies (it mirrors a path top/bottom, which only makes
+  // sense for FRC's field layout).
+  supportsFlipSide: boolean;
   defaultObstacles: Obstacle[];
   // Bump this whenever defaultObstacles' geometry changes, so a stale locally-persisted obstacle
   // layout from a previous version of this file gets replaced by the fresh defaults on load
@@ -48,6 +55,9 @@ const FRC_GAME: GameConfig = {
   gridSpacing: 24,
   waypointMarkerIn: 4.2,
   defaultSettings: DEFAULT_SETTINGS,
+  settingsVersion: 1,
+  settingsUpgrade: { showGhost: false },
+  supportsFlipSide: true,
   defaultObstacles: DEFAULT_OBSTACLES,
   obstaclesVersion: 1,
   originInfoTitle: 'Blue outpost corner (top-right) - (0,0)',
@@ -100,7 +110,7 @@ export const FTC_DEFAULT_SETTINGS: PlannerSettings = {
   robotW: 18,
   robotL: 18,
   showGrid: true,
-  showGhost: true,
+  showGhost: false,
   snap: 0,
   maxVel: 40,
   maxAccel: 60,
@@ -169,6 +179,9 @@ const FTC_GAME: GameConfig = {
   gridSpacing: FTC_FULL / 6, // real FTC tile size (~23.54in), so the grid lines up with tiles
   waypointMarkerIn: 2.6, // smaller field, so a smaller marker keeps it from dwarfing the tiles
   defaultSettings: FTC_DEFAULT_SETTINGS,
+  settingsVersion: 1,
+  settingsUpgrade: { showGhost: false },
+  supportsFlipSide: false,
   defaultObstacles: FTC_DEFAULT_OBSTACLES,
   obstaclesVersion: 9,
   originInfoTitle: 'Center of field - (0,0)',

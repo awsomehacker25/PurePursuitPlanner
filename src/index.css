@@ -13,6 +13,8 @@ header{display:flex;align-items:center;gap:10px;padding:8px 14px;background:var(
 .header-btns{display:flex;gap:5px;margin-left:auto;flex-wrap:wrap}
 .btn{background:var(--surface2);border:1px solid var(--border2);color:var(--text);font-family:inherit;font-size:11px;padding:5px 10px;border-radius:5px;cursor:pointer;transition:background .15s,border-color .15s}
 .btn:hover{background:var(--surface);border-color:var(--blue)}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.btn:disabled:hover{background:var(--surface2);border-color:var(--border2)}
 .btn.primary{background:var(--blue);color:#000;border-color:var(--blue);font-weight:600}
 .btn.primary:hover{background:#6ab3ff}
 .btn.danger{border-color:var(--red);color:var(--red)}
