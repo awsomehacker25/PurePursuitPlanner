@@ -796,6 +796,25 @@ export default function App() {
         ctx.strokeStyle = cssToRgba(textColor, 0.5);
         ctx.stroke();
         ctx.restore();
+      } else if (obs.category === 'balls') {
+        const n = Math.max(1, Math.round(obs.count ?? 1));
+        const horizontal = ow >= oh;
+        const longLen = horizontal ? ow : oh;
+        const r = Math.max(1.5, Math.min(ow, oh) / 2);
+        const step = longLen / n;
+        ctx.save();
+        ctx.fillStyle = obs.color;
+        ctx.strokeStyle = cssToRgba(textColor, 0.55);
+        ctx.lineWidth = 1;
+        for (let k = 0; k < n; k++) {
+          const off = -longLen / 2 + (k + 0.5) * step;
+          ctx.beginPath();
+          ctx.arc(horizontal ? cx + off : cx, horizontal ? cy : cy + off, r, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+        }
+        ctx.restore();
+        return;
       } else {
         ctx.save();
         ctx.globalAlpha = obs.blocked ? 0.28 : 0.18;
@@ -1621,6 +1640,9 @@ export default function App() {
                   <div className="form-row"><label>Y</label><input title="Obstacle center Y" type="number" value={obs.cy} onChange={(e) => setObstacles((prev) => prev.map((o, idx) => idx === i ? { ...o, cy: Number(e.target.value) } : o))} /></div>
                   <div className="form-row"><label>W</label><input title="Obstacle width" type="number" value={obs.w} onChange={(e) => setObstacles((prev) => prev.map((o, idx) => idx === i ? { ...o, w: Number(e.target.value) } : o))} /></div>
                   <div className="form-row"><label>H</label><input title="Obstacle height" type="number" value={obs.h} onChange={(e) => setObstacles((prev) => prev.map((o, idx) => idx === i ? { ...o, h: Number(e.target.value) } : o))} /></div>
+                  {obs.category === 'balls' && (
+                    <div className="form-row"><label>Count</label><input title="Number of balls in this row" type="number" min={1} value={obs.count ?? 1} onChange={(e) => setObstacles((prev) => prev.map((o, idx) => idx === i ? { ...o, count: Math.max(1, Math.round(Number(e.target.value) || 1)) } : o))} /></div>
+                  )}
                   <div className="form-row"><label>Blocked</label><input title="Obstacle is blocking" type="checkbox" checked={obs.blocked} onChange={(e) => setObstacles((prev) => prev.map((o, idx) => idx === i ? { ...o, blocked: e.target.checked } : o))} /></div>
                 </div>
               ))}

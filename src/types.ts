@@ -21,7 +21,9 @@ export interface Obstacle {
   h: number;
   color: string;
   blocked: boolean;
-  category: 'hub' | 'bump' | 'trench' | 'depot' | 'fuel' | 'hive' | 'flower' | 'other';
+  category: 'hub' | 'bump' | 'trench' | 'depot' | 'fuel' | 'hive' | 'flower' | 'balls' | 'other';
+  // For category 'balls': how many circles to spread evenly along the rect's long axis.
+  count?: number;
 }
 
 export interface PlannerSettings {

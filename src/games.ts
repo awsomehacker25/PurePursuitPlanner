@@ -117,6 +117,23 @@ const HIVE_FRAME_W = 49.46; // combined red+blue HIVE frame width
 const HIVE_FRAME_D = 38.95; // combined red+blue HIVE frame depth
 const FLOWER_D = 5; // ~4in FLOWER opening, drawn slightly larger for visibility
 const TILE = FTC_FULL / 6; // ~23.54in, used to snap FLOWER positions exactly onto tile gridlines
+// Starting game pieces (manual 9.8 / 10.3.1). Each group is one 'balls' obstacle: `count` circles
+// spread along its long axis, touching. POLLEN (yellow, 2.8in): 4 in a line in each GARDEN, starting in
+// the corner nearest that alliance's area and against the wall. NECTAR (3.6in): 3 in a line in the
+// upward-facing CELL of each HIVE, against the cell side nearest the matching ALLIANCE AREA.
+const GARDEN_BALL_D = 2.8;
+const GARDEN_BALL_COUNT = 4;
+const GARDEN_BALLS_LEN = GARDEN_BALL_COUNT * GARDEN_BALL_D;
+const HIVE_BALL_D = 3.6;
+const HIVE_BALL_COUNT = 3;
+const HIVE_BALLS_LEN = HIVE_BALL_COUNT * HIVE_BALL_D;
+// These mirror the hive shape drawn in App.tsx (cell centers offset 0.26*depth from the hive center;
+// each cell is a hexagon 0.95*width wide that narrows toward the pivot bar).
+const HIVE_CELL_OFFSET = HIVE_FRAME_D * 0.26;
+const HIVE_CELL_HALF_W = ((HIVE_FRAME_W / 2) * 0.95) / 2;
+const HIVE_BALL_ROW_HALF_W = HIVE_CELL_HALF_W * 0.71; // cell half-width at the ball row
+const HIVE_BALL_ROW_TOWARD_PIVOT = 2.5; // balls rest toward the pivot end of the cell
+const HIVE_BALL_INSET = 0.8; // keeps the end ball inside the slanted cell edge
 
 // All obstacle cx/cy/w/h are in field-IMAGE pixel space (origin top-left), matching how
 // DEFAULT_OBSTACLES works for FRC. imgX = HALF + userY, imgY = HALF + userX (see userToImg below),
@@ -137,6 +154,11 @@ export const FTC_DEFAULT_OBSTACLES: Obstacle[] = [
   { id: 'flower_se', cx: 4 * TILE, cy: FTC_FULL - FLOWER_D / 2, w: FLOWER_D, h: FLOWER_D, label: 'FLOWER', color: '#f7b731', blocked: false, category: 'flower' },
   { id: 'hive_red', cx: FTC_HALF - HIVE_FRAME_W / 4, cy: FTC_HALF, w: HIVE_FRAME_W / 2, h: HIVE_FRAME_D, label: 'RED HIVE', color: '#ff5a5a', blocked: true, category: 'hive' },
   { id: 'hive_blue', cx: FTC_HALF + HIVE_FRAME_W / 4, cy: FTC_HALF, w: HIVE_FRAME_W / 2, h: HIVE_FRAME_D, label: 'BLUE HIVE', color: '#4a9eff', blocked: true, category: 'hive' },
+  // Balls are listed last so they draw on top of the garden/hive shapes.
+  { id: 'garden_blue_balls', cx: FTC_FULL - GARDEN_BALLS_LEN / 2, cy: GARDEN_BALL_D / 2, w: GARDEN_BALLS_LEN, h: GARDEN_BALL_D, label: 'BLUE GARDEN BALLS', color: '#ffd83d', blocked: false, category: 'balls', count: GARDEN_BALL_COUNT },
+  { id: 'garden_red_balls', cx: GARDEN_BALLS_LEN / 2, cy: FTC_FULL - GARDEN_BALL_D / 2, w: GARDEN_BALLS_LEN, h: GARDEN_BALL_D, label: 'RED GARDEN BALLS', color: '#ffd83d', blocked: false, category: 'balls', count: GARDEN_BALL_COUNT },
+  { id: 'hive_red_balls', cx: FTC_HALF - HIVE_FRAME_W / 4 - HIVE_BALL_ROW_HALF_W + HIVE_BALL_INSET + HIVE_BALLS_LEN / 2, cy: FTC_HALF + HIVE_CELL_OFFSET - HIVE_BALL_ROW_TOWARD_PIVOT, w: HIVE_BALLS_LEN, h: HIVE_BALL_D, label: 'RED HIVE BALLS', color: '#ff5a5a', blocked: false, category: 'balls', count: HIVE_BALL_COUNT },
+  { id: 'hive_blue_balls', cx: FTC_HALF + HIVE_FRAME_W / 4 + HIVE_BALL_ROW_HALF_W - HIVE_BALL_INSET - HIVE_BALLS_LEN / 2, cy: FTC_HALF - HIVE_CELL_OFFSET + HIVE_BALL_ROW_TOWARD_PIVOT, w: HIVE_BALLS_LEN, h: HIVE_BALL_D, label: 'BLUE HIVE BALLS', color: '#4a9eff', blocked: false, category: 'balls', count: HIVE_BALL_COUNT },
 ];
 
 const FTC_GAME: GameConfig = {
@@ -148,7 +170,7 @@ const FTC_GAME: GameConfig = {
   waypointMarkerIn: 2.6, // smaller field, so a smaller marker keeps it from dwarfing the tiles
   defaultSettings: FTC_DEFAULT_SETTINGS,
   defaultObstacles: FTC_DEFAULT_OBSTACLES,
-  obstaclesVersion: 7,
+  obstaclesVersion: 9,
   originInfoTitle: 'Center of field - (0,0)',
   originInfoLines: ['+X toward LOADING ZONE / GARDEN wall (downfield), +Y toward BLUE alliance', 'θ: 0°=+Y (blue side), 90°=+X, CW+'],
   negateX: false,
